@@ -20,6 +20,7 @@ pyarrow==19.0.1
 # --- Database ---
 sqlalchemy==2.0.40
 aiosqlite==0.21.0
+asyncpg==0.29.0
 
 # --- Config & Environment ---
 pydantic==2.11.3

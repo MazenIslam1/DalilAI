@@ -66,7 +66,7 @@ class AIPipeline:
             logger.info("pipeline_cache_hit", dataset_id=dataset_id)
             return ChatResponse(
                 conversation_id=conversation_id,
-                message=cached,
+                message=self._strip_code_blocks(cached),
                 tokens_used=0,
             )
 
@@ -111,11 +111,6 @@ class AIPipeline:
                 )
 
                 if execution_result["success"]:
-                    # If code execution worked, enhance the AI response with results
-                    if execution_result["output"]:
-                        ai_response = self._enhance_response(
-                            ai_response, execution_result["output"]
-                        )
                     break  # Use first successful code block
                 else:
                     logger.warning(
@@ -124,9 +119,12 @@ class AIPipeline:
                     )
 
         # ── Stage 6: Format Response ────────────────────────────
+        # Strip code blocks from the AI message — keep only natural language
+        clean_message = self._strip_code_blocks(ai_response)
+
         # Store in memory
         conversation_memory.add_message(conversation_id, "user", question)
-        conversation_memory.add_message(conversation_id, "assistant", ai_response)
+        conversation_memory.add_message(conversation_id, "assistant", clean_message)
 
         # Cache the response
         response_cache.put(question, dataset_id, ai_response)
@@ -136,7 +134,7 @@ class AIPipeline:
 
         response = ChatResponse(
             conversation_id=conversation_id,
-            message=ai_response,
+            message=clean_message,
             code_executed=executed_code,
             execution_result=execution_result if execution_result else None,
             tokens_used=total_tokens,
@@ -151,16 +149,15 @@ class AIPipeline:
 
         return response
 
-    def _enhance_response(self, ai_response: str, execution_output: str) -> str:
-        """Append code execution results to the AI response."""
-        if not execution_output or execution_output == "(Code executed successfully, no output)":
-            return ai_response
-
-        return (
-            f"{ai_response}\n\n"
-            f"**Execution Results:**\n"
-            f"```\n{execution_output[:2000]}\n```"
-        )
+    @staticmethod
+    def _strip_code_blocks(text: str) -> str:
+        """Remove ```python ... ``` code blocks from the AI message, keeping only natural language."""
+        import re
+        # Remove fenced code blocks
+        cleaned = re.sub(r"```[\w]*\n.*?```", "", text, flags=re.DOTALL)
+        # Collapse extra blank lines
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned.strip()
 
 
 # Singleton
